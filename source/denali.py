@@ -6,6 +6,8 @@ from os import path, remove
 from time import time
 from json import dumps, loads
 
+# store wires from inputs in gate instead?! good idea maybe!!!?
+
 FPS = 150
 displayFPS = True
 backgroundColour = (31, 32, 38)
@@ -35,218 +37,204 @@ running = True
 gateImages = {path.basename(image.removesuffix(".png")).upper():pygame.image.load(image) for image in glob("gates/*.png")}
 gateTypes = list(gateImages.keys())
 
-gates = []
+gates = {}
 wires = {}
 
 gateCount = 0
 
 binImage = pygame.image.load("bin.png")
 
-class Gate:
-    def __init__(self, gateType):
-        self.gateType = gateType
-        self.position = [50,50]
-        self.drag = False
-        self.inputs = {1:{"angle":180, "active":False,}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}}
-        self.output = False
-        global gateCount
-        self.id = gateCount
-        gateCount += 1
-    
-    def touching(self, pos):
-        a = abs(pos[0] - self.position[0])
-        b = abs(pos[1] - self.position[1])
-        c = sqrt((a*a)+(b*b))
-        return c < gateSize
-    
-    def tick(self):
-        global wires
-        global gates
-        for inputID in self.inputs:
-            key = dumps({"gateID":self.id, "inputID":inputID})
-            if key in wires:
-                self.inputs[inputID]["active"] = [gate for gate in gates if gate.id == wires[key]["gateID"]][0].output
-        self.output = self.inputs[1]["active"] and self.inputs[2]["active"] if self.gateType == "AND" else self.inputs[1]["active"] or self.inputs[2]["active"] if self.gateType == "OR" else self.inputs[1]["active"] != self.inputs[2]["active"] if self.gateType == "XOR" else not self.inputs[1]["active"]
+AND = lambda inputs:inputs[1]["active"] and inputs[2]["active"]
+OR = lambda inputs: inputs[1]["active"] or inputs[2]["active"]
+XOR = lambda inputs: inputs[1]["active"] != inputs[2]["active"]
+NOT = lambda inputs: not inputs[1]["active"]
 
+def createNewGate(gateType):
+    gate = {
+    "gateType": gateType,
+    "position": [0,0],
+    "drag": False,
+    "inputs": {1:{"angle":180, "active":False,}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}},
+    "output": False,
+    "tick": AND if gateType == "AND" else OR if gateType == "OR" else NOT if gateType == "NOT" else XOR if gateType == "XOR" else None
+    }
+    global gateCount
+    gateID = gateCount
+    gateCount += 1
+    return gateID, gate
 
+touchingPoint = lambda pos, pointPos, radius: sqrt(abs(pos[0] - pointPos[0])**2+abs(pos[1] - pointPos[1])**2) < radius
+circlePointLocation = lambda pos, angle, radius: [(radius * cos(angle))+pos[0], (radius * sin(angle))+pos[1]]
 
 dragging = False
 drawing = False
 drawingfrompoint = False
 
-inventoryGates = []
+inventoryGates = {}
 
 fpstimer = time()
 fpscount = 0
 fps = FPS
+fpscountamount = 75
 
 font = pygame.font.SysFont('Consolas', 15)
 
 gateIOLocations = {}
 
 while running:
+    gatesToRemove = []
+
+    mouseX, mouseY = pygame.mouse.get_pos()
+
     fpscount += 1
-    if fpscount == 75:
+    if fpscount == fpscountamount:
         fpscount = 0
-        fps = 1/((time()-fpstimer)/75)
+        fps = 1/((time()-fpstimer)/fpscountamount)
         fpstimer = time()
-    
-    for gate in gates: gate.tick()
 
     # COMPUTE
     for event in pygame.event.get():
+        # End if window X is pressed
         if event.type == pygame.QUIT:
             running = False
-
+        
+        # Open Inventory
         if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB and not dragging and not drawing:
             dragging = True
-            inventoryGates = [Gate(gateType) for gateType in gateTypes]
-            x,y = pygame.mouse.get_pos()
-            for gate in inventoryGates:
-                angle = radians((inventoryGates.index(gate)/len(inventoryGates))*360)
-                gate.position = [(inventoryRadius * cos(angle))+x, (inventoryRadius * sin(angle))+y]
+            inventoryGates = {gateID:gate for gateID, gate in [createNewGate(gateType) for gateType in gateTypes]}
+            for gateID, gate in inventoryGates.items():
+                inventoryGates[gateID]["position"] = circlePointLocation((mouseX, mouseY), radians((list(inventoryGates.keys()).index(gateID)/len(inventoryGates))*360), inventoryRadius)
+                gateIOLocations[gateID] = {
+                    "inputs": {InputID:circlePointLocation(gate["position"], radians(Input["angle"]), gateSize) for InputID, Input in gate["inputs"].items()},
+                    "output": circlePointLocation(gate["position"], 0, gateSize)
+                }
         
+        # Close Inventory And Choose Gate
         elif event.type == pygame.KEYUP and event.key == pygame.K_TAB and not drawing:
-            for gate in inventoryGates:
-                if gate.touching(pygame.mouse.get_pos()):
-                    gates.insert(0, gate)
+            for gateID, gate in inventoryGates.items():
+                if touchingPoint((mouseX, mouseY), gate["position"], gateSize):
+                    gates[gateID] = gate
             inventoryGates.clear()
             dragging = False
-            
-        else:
-            gateIOLocations = {}
 
-            for gate in gates:
-                gate.tick()
-                
-                gateIOLocations[gate.id] = {
-                    "inputs":{InputID:[(gateSize * cos(radians(Input["angle"])))+gate.position[0], (gateSize * sin(radians(Input["angle"])))+gate.position[1]] for InputID, Input in gate.inputs.items()},
-                    "output":[(gateSize * cos(0))+gate.position[0], (gateSize * sin(0))+gate.position[1]]
-                    }
+        for gateID, gate in gates.items():
+            gateIOLocations[gateID] = {
+                "inputs": {InputID:circlePointLocation(gate["position"], radians(Input["angle"]), gateSize) for InputID, Input in gate["inputs"].items()},
+                "output": circlePointLocation(gate["position"], 0, gateSize)
+            }
 
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and not dragging:
-                    for InputID, Input in gate.inputs.items():
-                        angle = radians(Input["angle"])
-                        location = [(gateSize * cos(angle))+gate.position[0], (gateSize * sin(angle))+gate.position[1]]
-                        a = abs(event.pos[0] - location[0])
-                        b = abs(event.pos[1] - location[1])
-                        c = sqrt((a*a)+(b*b))
-                        if c < portSelectionSize:
+            gate["output"] = gate["tick"](gate["inputs"])
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 3:
+                    for InputID, Input in gate["inputs"].items():
+                        if touchingPoint((mouseX, mouseY), gateIOLocations[gateID]["inputs"][InputID], portSelectionSize):
                             drawing = True
-                            drawingfrompoint = {"gateID":gate.id, "inputID": InputID}
-                        
-                        if not drawingfrompoint:
-                            angle = 0
-                            location = [(gateSize * cos(angle))+gate.position[0], (gateSize * sin(angle))+gate.position[1]]
-                            a = abs(event.pos[0] - location[0])
-                            b = abs(event.pos[1] - location[1])
-                            c = sqrt((a*a)+(b*b))
-                            if c < portSelectionSize:
-                                drawing = True
-                                drawingfrompoint = {"gateID":gate.id, "inputID": False}
-
-                            
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 3 and drawing:
+                            drawingfrompoint = {"gateID":gateID, "inputID": InputID}
+                            break
+                    
+                    if not drawing:
+                        if touchingPoint((mouseX, mouseY), gateIOLocations[gateID]["output"], portSelectionSize):
+                            drawing = True
+                            drawingfrompoint = {"gateID":gateID, "inputID": False}
+                
+                elif event.button == 1 and not dragging:
+                    if touchingPoint((mouseX, mouseY), gate["position"], gateSize):
+                        dragging = True
+                        gate["drag"] = True
+                        gate["offset_x"] = gate["position"][0] - mouseX
+                        gate["offset_y"] = gate["position"][1] - mouseY
+                
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 3 and drawing:
                     drawnTo = False
 
-                    for InputID, Input in gate.inputs.items():
-                        angle = radians(Input["angle"])
-                        location = [(gateSize * cos(angle))+gate.position[0], (gateSize * sin(angle))+gate.position[1]]
-                        a = abs(event.pos[0] - location[0])
-                        b = abs(event.pos[1] - location[1])
-                        c = sqrt((a*a)+(b*b))
-                        if c < portSelectionSize:
-                            drawnTo = {"gateID":gate.id, "inputID": InputID}
+                    for InputID, Input in gate["inputs"].items():
+                        if touchingPoint((mouseX, mouseY), gateIOLocations[gateID]["inputs"][InputID], portSelectionSize):
+                            drawnTo = {"gateID":gateID, "inputID": InputID}
                             break
+                    
                     if not drawnTo:
-                        angle = 0
-                        location = gateIOLocations[gate.id]["output"]
-                        a = abs(event.pos[0] - location[0])
-                        b = abs(event.pos[1] - location[1])
-                        c = sqrt((a*a)+(b*b))
-                        if c < portSelectionSize:
-                            drawnTo = {"gateID":gate.id, "inputID": False}
+                        if touchingPoint((mouseX, mouseY), gateIOLocations[gateID]["output"], portSelectionSize):
+                            drawnTo = {"gateID":gateID, "inputID": False}
+                    
                     if drawnTo and bool(drawingfrompoint["inputID"]) != bool(drawnTo["inputID"]) and drawingfrompoint["gateID"] != drawnTo["gateID"]:
                         if drawingfrompoint["inputID"] == False:
                             wires[dumps(drawnTo)] = drawingfrompoint
                         else:
                             wires[dumps(drawingfrompoint)] = drawnTo
                     
-
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not dragging:
-                    if gate.touching(event.pos):
-                        dragging = True
-                        gate.drag = True
-                        mouse_x, mouse_y = event.pos
-                        gate.offset_x = gate.position[0] - mouse_x
-                        gate.offset_y = gate.position[1] - mouse_y
-                
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and gate.drag:
-                    gate.drag = False
-                    if 0 <= gate.position[0] <= 100 and pygame.display.get_surface().get_size()[1] >= gate.position[1] >= pygame.display.get_surface().get_size()[1]-105 and dragging:
-                        gates.remove(gate)
+                elif event.button == 1 and gate["drag"]:
+                    gate["drag"] = False
+                    if 0 <= gate["position"][0] <= 100 and pygame.display.get_surface().get_size()[1] >= gate["position"][1] >= pygame.display.get_surface().get_size()[1]-105 and dragging:
+                        gatesToRemove.append(gateID)
                     dragging = False
 
-                elif event.type == pygame.MOUSEMOTION and gate.drag:
-                    mouse_x, mouse_y = event.pos
-                    gate.position[0] = mouse_x + gate.offset_x
-                    gate.position[1] = mouse_y + gate.offset_y
+            elif event.type == pygame.MOUSEMOTION and gate["drag"]:
+                gate["position"][0] = mouseX + gate["offset_x"]
+                gate["position"][1] = mouseY + gate["offset_y"]
+                gateIOLocations[gateID] = {
+                    "inputs": {InputID:circlePointLocation(gate["position"], radians(Input["angle"]), gateSize) for InputID, Input in gate["inputs"].items()},
+                    "output": circlePointLocation(gate["position"], 0, gateSize)
+                }
 
-            if not dragging and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for gate in gates:
-                    mouse_x, mouse_y = event.pos
-                    gate.drag = True
-                    gate.offset_x = gate.position[0] - mouse_x
-                    gate.offset_y = gate.position[1] - mouse_y
-        
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 3 and drawing:
-            drawing = False
-            drawingfrompoint = False
-            
+        if not dragging and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for gateID, gate in gates.items():
+                gate["drag"] = True
+                gate["offset_x"] = gate["position"][0] - mouseX
+                gate["offset_y"] = gate["position"][1] - mouseY
+    
+    if event.type == pygame.MOUSEBUTTONUP and event.button == 3 and drawing:
+        drawing = False
+        drawingfrompoint = False
+    
+    for wireInput,wireOutput in wires.items():
+        wireInput = loads(wireInput)
+        gates[wireInput["gateID"]]["inputs"][wireInput["inputID"]]["active"] = gates[wireOutput["gateID"]]["output"]
 
+    for gateID in gatesToRemove:
+        gates.pop(gateID)
 
     # RENDER
 
     screen.fill(backgroundColour)
 
-    for gate in gates[::-1]+inventoryGates:
+    allGates = gates|inventoryGates
+    for gateID, gate in allGates.items():
         # SHADOW
-        pygame.draw.circle(screen, gateShadowColour, gate.position, gateSize+2)
-        pygame.draw.circle(screen, gateShadowColour, [value + 3 for value in gate.position], gateSize)
+        pygame.draw.circle(screen, gateShadowColour, gate["position"], gateSize+2)
+        pygame.draw.circle(screen, gateShadowColour, [value + 3 for value in gate["position"]], gateSize)
 
         # MAIN
-        pygame.draw.circle(screen, gateColour, gate.position, gateSize)
+        pygame.draw.circle(screen, gateColour, gate["position"], gateSize)
         
         # IMAGE
-        image = gateImages[gate.gateType]
-        imageLocation = [value - gateSize/2 for value in gate.position]
+        image = gateImages[gate["gateType"]]
+        imageLocation = [value - gateSize/2 for value in gate["position"]]
         imageLocation[0] -= 15 # X ADJUSTMENT
         imageLocation[1] += 5 # Y ADJUSTMENT
         screen.blit(image, imageLocation)
 
         # INPUTS
-        for InputID, Input in gate.inputs.items():
-            angle = radians(Input["angle"])
-            location = [(gateSize * cos(angle))+gate.position[0], (gateSize * sin(angle))+gate.position[1]]
+        for InputID, Input in gate["inputs"].items():
+            location = gateIOLocations[gateID]["inputs"][InputID]
             pygame.draw.circle(screen, portBorderColour, location, portSize+2)
             pygame.draw.circle(screen, portColour, location, portSize)
         
         # OUTPUT
-        location = [(gateSize * cos(0))+gate.position[0], (gateSize * sin(0))+gate.position[1]]
+        location = gateIOLocations[gateID]["output"]
         pygame.draw.circle(screen, portBorderColour, location, portSize+2)
         pygame.draw.circle(screen, portColour, location, portSize)
 
     if drawingfrompoint:
-        gate = [gate for gate in gates if gate.id == drawingfrompoint["gateID"]][0]
-        angle = radians(gate.inputs[drawingfrompoint["inputID"]]["angle"] if drawingfrompoint["inputID"] else 0)
-        location = [(gateSize * cos(angle))+gate.position[0], (gateSize * sin(angle))+gate.position[1]]
-
-        pygame.draw.line(screen, (255,255,255), location, pygame.mouse.get_pos())
+        gate = gates[drawingfrompoint["gateID"]]
+        location = circlePointLocation(gate["position"], radians(gate["inputs"][drawingfrompoint["inputID"]]["angle"] if drawingfrompoint["inputID"] else 0), gateSize)
+        pygame.draw.line(screen, wireOffColour if drawingfrompoint["inputID"]!=False else gates[drawingfrompoint["gateID"]]["output"], location, pygame.mouse.get_pos()) # add on/off colours rather than just WHITE
 
     # WIRES
     for wireInput,wireOutput in wires.items():
-            wireInputLoaded = loads(wireInput)
-            pygame.draw.line(screen, wireOnColour if [gate for gate in gates if gate.id == wireOutput["gateID"]][0].output == True else wireOffColour,
+        wireInputLoaded = loads(wireInput)
+        pygame.draw.line(screen, wireOnColour if gates[wireOutput["gateID"]]["output"] == True else wireOffColour,
             gateIOLocations[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]],
             gateIOLocations[wireOutput["gateID"]]["output"]
         )
