@@ -8,7 +8,7 @@ from json import dumps, loads
 
 # store wires from inputs in gate instead?! good idea maybe!!!?
 
-FPS = 150
+targetFPS = 150
 displayFPS = True
 backgroundColour = (31, 32, 38)
 inventoryRadius = 100
@@ -74,7 +74,7 @@ inventoryGates = {}
 
 fpstimer = time()
 fpscount = 0
-fps = FPS
+fps = targetFPS
 fpscountamount = 75
 
 font = pygame.font.SysFont('Consolas', 15)
@@ -83,6 +83,7 @@ gateIOLocations = {}
 
 while running:
     gatesToRemove = []
+    wiresToRemove = []
 
     mouseX, mouseY = pygame.mouse.get_pos()
 
@@ -142,8 +143,8 @@ while running:
                     if touchingPoint((mouseX, mouseY), gate["position"], gateSize):
                         dragging = True
                         gate["drag"] = True
-                        gate["offset_x"] = gate["position"][0] - mouseX
-                        gate["offset_y"] = gate["position"][1] - mouseY
+                        gate["offsetX"] = gate["position"][0] - mouseX
+                        gate["offsetY"] = gate["position"][1] - mouseY
                 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 3 and drawing:
@@ -171,8 +172,8 @@ while running:
                     dragging = False
 
             elif event.type == pygame.MOUSEMOTION and gate["drag"]:
-                gate["position"][0] = mouseX + gate["offset_x"]
-                gate["position"][1] = mouseY + gate["offset_y"]
+                gate["position"][0] = mouseX + gate["offsetX"]
+                gate["position"][1] = mouseY + gate["offsetY"]
                 gateIOLocations[gateID] = {
                     "inputs": {InputID:circlePointLocation(gate["position"], radians(Input["angle"]), gateSize) for InputID, Input in gate["inputs"].items()},
                     "output": circlePointLocation(gate["position"], 0, gateSize)
@@ -181,19 +182,26 @@ while running:
         if not dragging and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for gateID, gate in gates.items():
                 gate["drag"] = True
-                gate["offset_x"] = gate["position"][0] - mouseX
-                gate["offset_y"] = gate["position"][1] - mouseY
+                gate["offsetX"] = gate["position"][0] - mouseX
+                gate["offsetY"] = gate["position"][1] - mouseY
     
     if event.type == pygame.MOUSEBUTTONUP and event.button == 3 and drawing:
         drawing = False
         drawingfrompoint = False
     
-    for wireInput,wireOutput in wires.items():
-        wireInput = loads(wireInput)
-        gates[wireInput["gateID"]]["inputs"][wireInput["inputID"]]["active"] = gates[wireOutput["gateID"]]["output"]
-
     for gateID in gatesToRemove:
         gates.pop(gateID)
+
+    for wireInput,wireOutput in wires.items():
+        wireInputLoaded = loads(wireInput)
+        if wireInputLoaded["gateID"] in gatesToRemove or wireOutput["gateID"] in gatesToRemove:
+            wiresToRemove.append(wireInput)
+        else:
+            gates[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]]["active"] = gates[wireOutput["gateID"]]["output"]
+    
+    for wireInput in wiresToRemove:
+        wires.pop(wireInput)
+
 
     # RENDER
 
@@ -247,6 +255,6 @@ while running:
 
     pygame.display.flip()
 
-    clock.tick(FPS)
+    clock.tick(targetFPS)
 
 pygame.quit()
