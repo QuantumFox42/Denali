@@ -5,4 +5,4 @@ Logic Gate Simulator (STILL VERY ALPHA)
 Controls:  
   ```TAB```: Access inventory.  
   ```LEFT MOUSE BUTTON``` + ```DRAG```: Move gate when on single gate, or all gates if on background.  
-  ```RIGHT MOUSE BUTTON``` + ```DRAG```: Creates wire if from an I/O to another I/O, or remove wires on hover if used on background.
+  ```RIGHT MOUSE BUTTON``` + ```DRAG```: Creates wire if from an I/O to another I/O, or remove wires if used on background.
