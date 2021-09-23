@@ -82,6 +82,7 @@ dragging = False
 drawing = False
 drawingfrompoint = False
 wireDelete = False
+viewDrag = False
 
 inventoryGates = {}
 
@@ -180,9 +181,8 @@ while running:
                     
                 elif event.button == 1 and gate["drag"]:
                     gate["drag"] = False
-                    if 0 <= gate["position"][0] <= 100 and pygame.display.get_surface().get_size()[1] >= gate["position"][1] >= pygame.display.get_surface().get_size()[1]-105 and dragging:
+                    if not viewDrag and 0 <= gate["position"][0] <= 100 and pygame.display.get_surface().get_size()[1] >= gate["position"][1] >= pygame.display.get_surface().get_size()[1]-105 and dragging:
                         gatesToRemove.append(gateID)
-                    dragging = False
 
             elif event.type == pygame.MOUSEMOTION and gate["drag"]:
                 gate["position"][0] = mouseX + gate["offsetX"]
@@ -198,6 +198,7 @@ while running:
                 gate["offsetX"] = gate["position"][0] - mouseX
                 gate["offsetY"] = gate["position"][1] - mouseY
             dragging = True
+            viewDrag = True
 
         if not dragging and not drawing and event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             wireDelete = True
@@ -223,6 +224,10 @@ while running:
         drawing = False
         dragging = False
         drawingfrompoint = False
+    
+    if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and dragging:
+        dragging = False
+        viewDrag = False
     
     for gateID in gatesToRemove:
         gates.pop(gateID)
