@@ -1,5 +1,7 @@
 import pygame
-from math import sqrt, sin, cos, radians
+from math import sqrt, sin, cos, radians, degrees, atan
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
 from numpy import clip
 from glob import glob
 from os import path, remove
@@ -49,14 +51,21 @@ OR = lambda inputs: inputs[1]["active"] or inputs[2]["active"]
 XOR = lambda inputs: inputs[1]["active"] != inputs[2]["active"]
 NOT = lambda inputs: not inputs[1]["active"]
 
+tickFunctions = {
+    "AND": AND,
+    "OR": OR,
+    "XOR": XOR,
+    "NOT": NOT
+}
+
 def createNewGate(gateType):
     gate = {
     "gateType": gateType,
     "position": [0,0],
     "drag": False,
-    "inputs": {1:{"angle":180, "active":False,}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}},
+    "inputs": {1:{"angle":180, "active":False}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}},
     "output": False,
-    "tick": AND if gateType == "AND" else OR if gateType == "OR" else NOT if gateType == "NOT" else XOR if gateType == "XOR" else None
+    "tick": tickFunctions[gateType]
     }
     global gateCount
     gateID = gateCount
@@ -66,9 +75,13 @@ def createNewGate(gateType):
 touchingPoint = lambda pos, pointPos, radius: sqrt(abs(pos[0] - pointPos[0])**2+abs(pos[1] - pointPos[1])**2) < radius
 circlePointLocation = lambda pos, angle, radius: [(radius * cos(angle))+pos[0], (radius * sin(angle))+pos[1]]
 
+# VERY MESSY FUNCTION, PLEASE FIX
+angleBetweenPoints = lambda point1, point2: degrees(atan((point2[0]-point1[0])/(point1[1]-point2[1]))) + (90 if (point2[0]-point1[0])>0 else -90) + (180 if (point2[0]-point1[0])>0!=(point2[1]-point1[1])>0 else 180 if (point2[0]-point1[0])<0 and (point2[1]-point1[1])<0 else 0)
+
 dragging = False
 drawing = False
 drawingfrompoint = False
+wireDelete = False
 
 inventoryGates = {}
 
@@ -159,7 +172,7 @@ while running:
                         if touchingPoint((mouseX, mouseY), gateIOLocations[gateID]["output"], portSelectionSize):
                             drawnTo = {"gateID":gateID, "inputID": False}
                     
-                    if drawnTo and bool(drawingfrompoint["inputID"]) != bool(drawnTo["inputID"]) and drawingfrompoint["gateID"] != drawnTo["gateID"]:
+                    if drawnTo and drawingfrompoint and bool(drawingfrompoint["inputID"]) != bool(drawnTo["inputID"]) and drawingfrompoint["gateID"] != drawnTo["gateID"]:
                         if drawingfrompoint["inputID"] == False:
                             wires[dumps(drawnTo)] = drawingfrompoint
                         else:
@@ -184,9 +197,31 @@ while running:
                 gate["drag"] = True
                 gate["offsetX"] = gate["position"][0] - mouseX
                 gate["offsetY"] = gate["position"][1] - mouseY
+            dragging = True
+
+        if not dragging and not drawing and event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            wireDelete = True
+            dragging = True
+            drawing = True
+        
+        if wireDelete:
+            for wireInput,wireOutput in wires.items():
+                wireInputLoaded = loads(wireInput)
+
+                angle = angleBetweenPoints(gateIOLocations[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]], gateIOLocations[wireOutput["gateID"]]["output"])
+
+                vertexes = [circlePointLocation(gateIOLocations[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]], radians(angle+45), 10),
+                circlePointLocation(gateIOLocations[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]], radians(angle-45), 10),
+                circlePointLocation(gateIOLocations[wireOutput["gateID"]]["output"], radians(angle-180+45), 10),
+                circlePointLocation(gateIOLocations[wireOutput["gateID"]]["output"], radians(angle-180-45), 10)]
+
+                if Polygon(vertexes).contains(Point(mouseX,mouseY)):
+                    wiresToRemove.append(wireInput)
     
     if event.type == pygame.MOUSEBUTTONUP and event.button == 3 and drawing:
+        wireDelete = False
         drawing = False
+        dragging = False
         drawingfrompoint = False
     
     for gateID in gatesToRemove:
@@ -237,11 +272,12 @@ while running:
     if drawingfrompoint:
         gate = gates[drawingfrompoint["gateID"]]
         location = circlePointLocation(gate["position"], radians(gate["inputs"][drawingfrompoint["inputID"]]["angle"] if drawingfrompoint["inputID"] else 0), gateSize)
-        pygame.draw.line(screen, wireOffColour if drawingfrompoint["inputID"]!=False else gates[drawingfrompoint["gateID"]]["output"], location, pygame.mouse.get_pos()) # add on/off colours rather than just WHITE
+        pygame.draw.line(screen, wireOffColour if drawingfrompoint["inputID"]!=False else wireOnColour if gates[drawingfrompoint["gateID"]]["output"] == True else wireOffColour, location, pygame.mouse.get_pos())
 
     # WIRES
     for wireInput,wireOutput in wires.items():
         wireInputLoaded = loads(wireInput)
+
         pygame.draw.line(screen, wireOnColour if gates[wireOutput["gateID"]]["output"] == True else wireOffColour,
             gateIOLocations[wireInputLoaded["gateID"]]["inputs"][wireInputLoaded["inputID"]],
             gateIOLocations[wireOutput["gateID"]]["output"]
