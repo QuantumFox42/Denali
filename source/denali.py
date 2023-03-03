@@ -13,7 +13,7 @@ from json import dumps, loads
 targetFPS = 150
 displayFPS = True
 backgroundColour = (31, 32, 38)
-inventoryRadius = 100
+inventoryRadius = 110
 
 portSize = 7
 portSelectionSize=15
@@ -25,8 +25,10 @@ gateSize = 50
 gateColour = (112, 119, 130)
 gateShadowColour = [clip(value-20, 0, 255) for value in gateColour]
 
-wireOffColour = (52, 99, 115)
-wireOnColour = (89, 173, 201)
+buttonSize = 30
+wireOffColour = (66,111,122) #(52, 99, 115)
+wireOnColour = (109,163,176) #(89, 173, 201)
+buttonBorderColour = [clip(value-60, 0, 255) for value in gateColour]
 
 pygame.init()
 pygame.font.init()
@@ -63,9 +65,9 @@ def createNewGate(gateType):
     "gateType": gateType,
     "position": [0,0],
     "drag": False,
-    "inputs": {1:{"angle":180, "active":False}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}},
+    "inputs": {} if gateType in ["PUSH", "TOGGLE"] else {1:{"angle":180, "active":False}} if gateType == "NOT" else {1:{"angle":180+inputSpread, "active":False}, 2:{"angle":180-inputSpread, "active":False}},
     "output": False,
-    "tick": tickFunctions[gateType]
+    "tick": tickFunctions[gateType] if gateType in tickFunctions.keys() else None
     }
     global gateCount
     gateID = gateCount
@@ -83,6 +85,7 @@ drawing = False
 drawingfrompoint = False
 wireDelete = False
 viewDrag = False
+pressingButton = False
 
 inventoryGates = {}
 
@@ -107,6 +110,15 @@ while running:
         fps = 1/((time()-fpstimer)/fpscountamount)
         fpstimer = time()
 
+    # CLEANS UP CURRENT ACTION VARIABLES (FIXES BUG OF ACTIONS REMAINING ACTIVE AFTER RELEASE SOMETIMES FOR SOME REASON)
+    if not pygame.mouse.get_pressed(num_buttons=3)[0] and not pygame.mouse.get_pressed(num_buttons=3)[2]:
+        dragging = False
+        drawing = False
+        drawingfrompoint = False
+        wireDelete = False
+        viewDrag = False
+        pressingButton = False
+
     # COMPUTE
     for event in pygame.event.get():
         # End if window X is pressed
@@ -118,7 +130,7 @@ while running:
             dragging = True
             inventoryGates = {gateID:gate for gateID, gate in [createNewGate(gateType) for gateType in gateTypes]}
             for gateID, gate in inventoryGates.items():
-                inventoryGates[gateID]["position"] = circlePointLocation((mouseX, mouseY), radians((list(inventoryGates.keys()).index(gateID)/len(inventoryGates))*360), inventoryRadius)
+                inventoryGates[gateID]["position"] = circlePointLocation((mouseX, mouseY), radians((list(inventoryGates.keys()).index(gateID)/len(inventoryGates))*360-90), inventoryRadius)
                 gateIOLocations[gateID] = {
                     "inputs": {InputID:circlePointLocation(gate["position"], radians(Input["angle"]), gateSize) for InputID, Input in gate["inputs"].items()},
                     "output": circlePointLocation(gate["position"], 0, gateSize)
@@ -138,7 +150,7 @@ while running:
                 "output": circlePointLocation(gate["position"], 0, gateSize)
             }
 
-            gate["output"] = gate["tick"](gate["inputs"])
+            if gate["tick"]: gate["output"] = gate["tick"](gate["inputs"])
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 3:
@@ -154,7 +166,11 @@ while running:
                             drawingfrompoint = {"gateID":gateID, "inputID": False}
                 
                 elif event.button == 1 and not dragging:
-                    if touchingPoint((mouseX, mouseY), gate["position"], gateSize):
+                    if gate["gateType"] == "PUSH" and touchingPoint((mouseX, mouseY), gate["position"], buttonSize+5):
+                        gates[gateID]["output"] = True
+                        dragging = True
+                        pressingButton = True
+                    elif touchingPoint((mouseX, mouseY), gate["position"], gateSize):
                         dragging = True
                         gate["drag"] = True
                         gate["offsetX"] = gate["position"][0] - mouseX
@@ -183,6 +199,12 @@ while running:
                     gate["drag"] = False
                     if not viewDrag and 0 <= gate["position"][0] <= 100 and pygame.display.get_surface().get_size()[1] >= gate["position"][1] >= pygame.display.get_surface().get_size()[1]-105 and dragging:
                         gatesToRemove.append(gateID)
+                
+                elif event.button == 1:
+                    if gate["gateType"] == "PUSH":
+                        gates[gateID]["output"] = False
+                        dragging = False
+                        pressingButton = False
 
             elif event.type == pygame.MOUSEMOTION and gate["drag"]:
                 gate["position"][0] = mouseX + gate["offsetX"]
@@ -273,6 +295,10 @@ while running:
         location = gateIOLocations[gateID]["output"]
         pygame.draw.circle(screen, portBorderColour, location, portSize+2)
         pygame.draw.circle(screen, portColour, location, portSize)
+
+        # BUTTONS
+        if gate["gateType"] == "PUSH": pygame.draw.circle(screen, buttonBorderColour, gate["position"], buttonSize+5)
+        if gate["gateType"] == "PUSH": pygame.draw.circle(screen, wireOnColour if gate["output"] else wireOffColour, gate["position"], buttonSize)
 
     if drawingfrompoint:
         gate = gates[drawingfrompoint["gateID"]]
