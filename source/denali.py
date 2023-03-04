@@ -110,15 +110,6 @@ while running:
         fps = 1/((time()-fpstimer)/fpscountamount)
         fpstimer = time()
 
-    # CLEANS UP CURRENT ACTION VARIABLES (FIXES BUG OF ACTIONS REMAINING ACTIVE AFTER RELEASE SOMETIMES FOR SOME REASON)
-    if not pygame.mouse.get_pressed(num_buttons=3)[0] and not pygame.mouse.get_pressed(num_buttons=3)[2]:
-        dragging = False
-        drawing = False
-        drawingfrompoint = False
-        wireDelete = False
-        viewDrag = False
-        pressingButton = False
-
     # COMPUTE
     for event in pygame.event.get():
         # End if window X is pressed
@@ -263,6 +254,15 @@ while running:
     
     for wireInput in wiresToRemove:
         wires.pop(wireInput)
+    
+    # CLEANS UP CURRENT ACTION VARIABLES (FIXES BUG OF ACTIONS REMAINING ACTIVE AFTER RELEASE SOMETIMES FOR SOME REASON)
+    # if not pygame.mouse.get_pressed(num_buttons=3)[0] and not pygame.mouse.get_pressed(num_buttons=3)[2]:
+    #     dragging = False
+    #     drawing = False
+    #     drawingfrompoint = False
+    #     wireDelete = False
+    #     viewDrag = False
+    #     pressingButton = False
 
 
     # RENDER
