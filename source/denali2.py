@@ -1,10 +1,10 @@
 import pygame
 from numpy import array, transpose, dot
-from os import path, listdir
+from os import path
 from math import sin, cos, pi, sqrt, asin
 
 # Constant Variables
-IMAGES_DIRECTORY = "assets\images"
+IMAGES_DIRECTORY = "assets\\images"
 
 INITIAL_WINDOW_SIZE = (900, 900)
 
@@ -40,9 +40,8 @@ getDistance = lambda pos1, pos2: sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1
 
 # Load Images
 gateImages = {
-    path.basename(image.removesuffix(".png")).upper():
-    pygame.image.load(path.join(IMAGES_DIRECTORY, "Gates", image))
-    for image in listdir(path.join(IMAGES_DIRECTORY,"Gates"))
+    gateType: pygame.image.load(path.join(IMAGES_DIRECTORY, "gates", gateType.lower()+".png"))
+    for gateType in ["AND", "OR", "XOR", "NOT"]
     }
 binImage = pygame.image.load(path.join(IMAGES_DIRECTORY,"bin.png"))
 denaliImage = pygame.image.load(path.join(IMAGES_DIRECTORY, "denali.png"))
